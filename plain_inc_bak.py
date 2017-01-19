@@ -1,25 +1,58 @@
 #!/usr/bin/env python3
-import config as c
-import os, shutil, sys, subprocess, shlex
-from traceback import format_exc
-from typing import List, Any
 __desc__ = "Incremental backup utility with optional upload to Amazon S3"
 __autor__ = "Juanjo Alvarez <juanjo@juanjoalvarez.net>"
 __license__ = "MIT"
+
+import os, shutil, sys, subprocess, shlex
+from traceback import format_exc
+from typing import List, Any, Optional
+
 
 """
 TODO:
     - Check the exclude options from the command line
     - Support for mounting and unmounting devices
-    - Bandwith, IO and CPU (nice) limiting options, check:
+    - Bandwith and IO limiting options, check:
           http://unix.stackexchange.com/questions/48138/how-to-throttle-per-process-i-o-to-a-max-limit0/
-    - config.py finding logic (user directory dotfiles, /etc/plan_inc_bak/config.py, curdir, etc)
     - setup.py
     - Some examples of usage and integration on the README.md
-    - make a reusable library of this?
 """
 
 EMAIL_TEXTS = [] # type: List[str]
+
+def find_config() -> Optional[str]:
+    """
+    Find the path to the configuration files. Priority order is:
+    1. (this file dir)
+    2. ~/.config/plain_inc_bak/config.py
+    3. ~/.plain_inc_bak_config.py
+    3. /etc/plain_inc_bak/config.py
+
+    Config files are *not* flattened, only one will be parsed
+    """
+    op = os.path
+
+    curdir     = op.join(op.dirname(op.abspath(__file__)), 'config.py')
+    print(curdir)
+    userconfig = op.expanduser('~/.config/plain_inc_bak/config.py')
+    userroot   = op.expanduser('~/.plain_inc_bak_config.py')
+    etc        = '/etc/plain_inc_bak/config.py'
+
+    for d in (curdir, userconfig, userroot, etc):
+        if op.exists(d):
+            return d
+    return None
+
+
+config_file_path = find_config()
+if config_file_path:
+    import importlib.util as imputil
+    spec = imputil.spec_from_file_location("c", config_file_path)
+    c = imputil.module_from_spec(spec)
+    spec.loader.exec_module(c)
+else:
+    class c: pass
+
 
 def parse_arguments() -> Any:
     import argparse
