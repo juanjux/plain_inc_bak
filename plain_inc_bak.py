@@ -6,7 +6,8 @@ __license__ = "MIT"
 import os, shutil, sys, subprocess, shlex
 from traceback import format_exc
 from typing import List, Any, Optional
-
+from functools import wraps
+from time import time
 
 """
 TODO:
@@ -20,14 +21,38 @@ TODO:
 
 EMAIL_TEXTS = [] # type: List[str]
 
+def message(text: str, email: bool = True) -> None:
+    global EMAIL_TEXTS
+
+    print(text)
+
+    if c.EMAIL_REPORT and email:
+        EMAIL_TEXTS += text
+
+
+def timeit(text: str):
+    def decorator(func: Any) -> Any:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time()
+            res = func(*args, **kwargs)
+            seconds = int(time() - start)
+            m, s = divmod(seconds, 60)
+            h, m = divmod(m, 60)
+            elapsed = "%d:%02d:%02d" % (h, m, s)
+            message('Time for {name}: {time}'.format(name=text, time=elapsed))
+            return res
+        return wrapper
+    return decorator
+
+
 def find_config() -> Optional[str]:
     """
     Find the path to the configuration files. Priority order is:
     1. (this file dir)
     2. ~/.config/plain_inc_bak/config.py
     3. ~/.plain_inc_bak_config.py
-    3. /etc/plain_inc_bak/config.py
-
+    3. /etc/plain_inc_bak/config.pykwargs)
     Config files are *not* flattened, only one will be parsed
     """
     op = os.path
@@ -131,7 +156,7 @@ def parse_arguments() -> Any:
     if not c.BACKUPS_DIR:
         printerror('you need to configure a backups destination direcory')
 
-
+@timeit(text='Backup compression for upload')
 def compress_backup(dirpath: str) -> str:
     outpath = dirpath + '.tar.gz'
     cmd = 'tar c {}|pigz > {}'.format(dirpath, dirpath + '.tar.gz')
@@ -143,7 +168,7 @@ def compress_backup(dirpath: str) -> str:
 
     return outpath
 
-
+@timeit(text='GPG encrypting the backup for upload')
 def gpg_encrypt_file(filepath: str) -> None:
     cmd = 'gpg --batch --symmetric --cipher-algo AES256 --passphrase-fd 0 {}'.format(filepath)
     message('Encrypting backup with command: {}'.format(cmd))
@@ -158,7 +183,7 @@ def gpg_encrypt_file(filepath: str) -> None:
     message('File encrypted successfully')
     return filepath +'.gpg'
 
-
+@timeit(text='Uploading to S3')
 def upload_s3(dirpath: str) -> None:
     import boto3, time
 
@@ -214,15 +239,7 @@ def send_mail(subject: str, content: str) -> None:
     print('Err: %s' % stderr)
 
 
-def message(text: str, email: bool = True) -> None:
-    global EMAIL_TEXTS
-
-    print(text)
-
-    if c.EMAIL_REPORT and email:
-        EMAIL_TEXTS += text
-
-
+@timeit(text='Rotating backups')
 def rotate_backups(backup_dirs: List[str]) -> None:
     backup_nums = sorted([int(i.split('.')[1]) for i in backup_dirs])
     backup_nums.reverse()

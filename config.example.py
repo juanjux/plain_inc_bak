@@ -14,6 +14,7 @@ MAX_BACKUPS     = 5
 EXCLUDE         = [
         '/dev', '/proc', '/sys', '/tmp', '/run', '/mnt', '/media',
         '/lost+found', '/cdrom', '/var/cache/apt/archives', '/var/crash',
+        '/var/lib/lxcfs',
         BACKUPS_DIR
 ]
 
