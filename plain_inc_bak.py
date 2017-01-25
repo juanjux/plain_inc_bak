@@ -5,14 +5,19 @@ __license__ = "MIT"
 
 import os, shutil, sys, subprocess, shlex
 from traceback import format_exc
-from typing import List, Any, Optional
+try:
+    from typing import List, Any, Optional
+except ImportError:
+    List     = list
+    Any      = object
+    Optional = object
+
 from functools import wraps
 from time import time
 
 """
 TODO:
-    - Check the exclude options from the command line
-    - Support for mounting and unmounting devices
+    - Support for mounting and unmounting devices before/after the backup
     - Bandwith and IO limiting options, check:
           http://unix.stackexchange.com/questions/48138/how-to-throttle-per-process-i-o-to-a-max-limit0/
     - setup.py
@@ -25,9 +30,10 @@ def message(text: str, email: bool = True) -> None:
     global EMAIL_TEXTS
 
     print(text)
+    sys.stdout.flush()
 
     if c.EMAIL_REPORT and email:
-        EMAIL_TEXTS += text
+        EMAIL_TEXTS.append(text)
 
 
 def timeit(text: str):
@@ -58,7 +64,6 @@ def find_config() -> Optional[str]:
     op = os.path
 
     curdir     = op.join(op.dirname(op.abspath(__file__)), 'config.py')
-    print(curdir)
     userconfig = op.expanduser('~/.config/plain_inc_bak/config.py')
     userroot   = op.expanduser('~/.plain_inc_bak_config.py')
     etc        = '/etc/plain_inc_bak/config.py'
@@ -80,6 +85,19 @@ else:
 
 
 def parse_arguments() -> Any:
+    def get_best_compressor() -> str:
+        from shutil import which
+
+        # I'm only considering relatively fast compressors. pigz
+        # is fast and uses a lot less memory so its my favorite
+        for compressor in ('pigz', 'pbzip2', 'plzip', 'gzip'):
+            path = which(compressor)
+            if path:
+                return path
+        else:
+            raise Exception('Could not find any suitable compressor')
+    # end inner function
+
     import argparse
 
     parser = argparse.ArgumentParser(description=__desc__)
@@ -117,6 +135,9 @@ def parse_arguments() -> Any:
             help='Address where the report email will be sent')
     parser.add_argument('-D', '--dry_run', action='store_true',
             help='Dont really compress or upload anything')
+    parser.add_argument('-C', '--compressor', default=get_best_compressor(),
+            help='Program for compressing backups before uploading. If missing a ' +
+                 'program will be automatically selected')
 
     args = parser.parse_args()
 
@@ -135,6 +156,7 @@ def parse_arguments() -> Any:
     c.BACKUP_BASENAME   = args.backup_basename or 'backup'
     c.MAX_BACKUPS       = args.max_backups
     c.EXCLUDE           = args.exclude_dirs
+    c.COMPRESSOR        = args.compressor
 
     def printerror(msg):
         print('Error: {}'.format(msg), file=sys.stderr)
@@ -156,10 +178,11 @@ def parse_arguments() -> Any:
     if not c.BACKUPS_DIR:
         printerror('you need to configure a backups destination direcory')
 
+
 @timeit(text='Backup compression for upload')
 def compress_backup(dirpath: str) -> str:
     outpath = dirpath + '.tar.gz'
-    cmd = 'tar c {}|pigz > {}'.format(dirpath, dirpath + '.tar.gz')
+    cmd = 'tar c {}|{} > {}'.format(dirpath, c.COMPRESSOR, dirpath + '.tar.gz')
     message('Compressing directory {} to {}'.format(dirpath, outpath))
 
     if not c.DRY_RUN:
@@ -287,13 +310,17 @@ def main() -> None:
         zerodir = os.path.join(c.BACKUPS_DIR, '{}.0'.format(c.BACKUP_BASENAME))
 
         excludeparams = ['--exclude={}/*'.format(i) for i in c.EXCLUDE]
-        rsynccmd = ['/usr/bin/rsync', '-avzAXSH', '--delete', *excludeparams, c.ORIGIN, zerodir]
+        rsynccmd = ['/usr/bin/rsync', '-azAXSH', '--delete', *excludeparams, c.ORIGIN, zerodir]
         message('Running rsync with:\n{}'.format(' '.join(rsynccmd)))
 
         if not c.DRY_RUN:
-            output = subprocess.check_output(rsynccmd).decode()
-            message('Rsync completed successfully, last 10 lines of output: ' +
-                    '\n'.join(output.splitlines()[:-4]))
+            # Minifunction so I can time it
+            @timeit(text='Rsync to the most recent directory')
+            def callrsync():
+                subprocess.check_call(rsynccmd)
+
+            callrsync()
+            message('Rsync completed successfully')
 
         if c.S3_UPLOAD_ENABLED:
             upload_s3(zerodir)

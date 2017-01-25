@@ -1,3 +1,7 @@
+# This file contains the default options when running the program without
+# parameters. Most of these can be override using command line parameters
+# Run "python plain_inc_bak.py --help" to see them.
+
 DRY_RUN         = False
 # The base or root directory to backup. Subdirectories will be included,
 # except the ones in EXCLUDE
