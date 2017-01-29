@@ -182,8 +182,17 @@ def parse_arguments() -> Any:
 @timeit(text='Backup compression for upload')
 def compress_backup(dirpath: str) -> str:
     outpath = dirpath + '.tar.gz'
-    cmd = 'tar c {}|{} > {}'.format(dirpath, c.COMPRESSOR, dirpath + '.tar.gz')
     message('Compressing directory {} to {}'.format(dirpath, outpath))
+
+    # Remove the leading '/'; we'll instruct tar to change to the root directory
+    # with the -C / option thus avoiding the "removing leading /" message
+    if dirpath.startswith('/'):
+        dirpath = dirpath[1:]
+
+    compressor = c.COMPRESSOR
+    cmd = "tar c --warning='no-file-ignored' --directory=/ {dirpath}|{compressor} > {outpath}"\
+            .format(**locals())
+    print(cmd)
 
     if not c.DRY_RUN:
         output = subprocess.check_output(cmd, shell=True).decode()
@@ -258,8 +267,6 @@ def send_mail(subject: str, content: str) -> None:
     sendmail = subprocess.Popen([c.EMAIL_PROGRAM, to], stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE, bufsize=1)
     stdout, stderr = sendmail.communicate(bytearray(real_content, 'utf-8'))
-    print(stdout)
-    print('Err: %s' % stderr)
 
 
 @timeit(text='Rotating backups')
