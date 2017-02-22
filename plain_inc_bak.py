@@ -202,6 +202,10 @@ def compress_backup(dirpath: str) -> str:
 
 @timeit(text='GPG encrypting the backup for upload')
 def gpg_encrypt_file(filepath: str) -> None:
+    if os.path.exists(filepath):
+        message('Warning: deleting previously existing GPG file: {}'.format(filepath))
+        os.unlink(filepath)
+
     cmd = 'gpg --batch --symmetric --cipher-algo AES256 --passphrase-fd 0 {}'.format(filepath)
     message('Encrypting backup with command: {}'.format(cmd))
     if not c.DRY_RUN:
