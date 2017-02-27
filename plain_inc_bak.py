@@ -202,7 +202,8 @@ def compress_backup(dirpath: str) -> str:
 
 @timeit(text='GPG encrypting the backup for upload')
 def gpg_encrypt_file(filepath: str) -> None:
-    if os.path.exists(filepath):
+    gpgpath = filepath + '.gpg'
+    if os.path.exists(gpgpath):
         message('Warning: deleting previously existing GPG file: {}'.format(filepath))
         os.unlink(filepath)
 
@@ -217,7 +218,7 @@ def gpg_encrypt_file(filepath: str) -> None:
             raise Exception('Could not encrypt file: {}'.format(stdout + stderr))
 
     message('File encrypted successfully')
-    return filepath +'.gpg'
+    return gpgpath
 
 @timeit(text='Uploading to S3')
 def upload_s3(dirpath: str) -> None:
