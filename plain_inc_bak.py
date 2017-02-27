@@ -138,6 +138,13 @@ def parse_arguments() -> Any:
     parser.add_argument('-C', '--compressor', default=get_best_compressor(),
             help='Program for compressing backups before uploading. If missing a ' +
                  'program will be automatically selected')
+    parser.add_argument('--nogpg', action='store_true',
+        help='Avoid doing GPG compression when it would normally be configured to do so')
+    parser.add_argument('--norotate', action='store_true',
+        help='Avoid rotating the backups when it would normally be configured to do so')
+    parser.add_argument('--norsync', action='store_true',
+        help='Avoid doing the rsync to the .0 backup directory when it would normally '
+             'be configured to do so')
 
     args = parser.parse_args()
 
@@ -157,6 +164,9 @@ def parse_arguments() -> Any:
     c.MAX_BACKUPS       = args.max_backups
     c.EXCLUDE           = args.exclude_dirs
     c.COMPRESSOR        = args.compressor
+    c.NOGPG             = args.nogpg
+    c.NOROTATE          = args.norotate
+    c.NORSYNC           = args.norsync
 
     def printerror(msg):
         print('Error: {}'.format(msg), file=sys.stderr)
@@ -177,6 +187,17 @@ def parse_arguments() -> Any:
 
     if not c.BACKUPS_DIR:
         printerror('you need to configure a backups destination direcory')
+
+
+@timeit(text='RSync to the most recent directory')
+def rsync_first(zerodir):
+    # Now do the real backup with rsync
+    excludeparams = ['--exclude={}/*'.format(i) for i in c.EXCLUDE]
+    rsynccmd = ['/usr/bin/rsync', '-azAXSH', '--delete', *excludeparams, c.ORIGIN, zerodir]
+    message('Running rsync with:\n{}'.format(' '.join(rsynccmd)))
+
+    subprocess.check_call(rsynccmd)
+    message('Rsync completed successfully')
 
 
 @timeit(text='Backup compression for upload')
@@ -224,12 +245,13 @@ def gpg_encrypt_file(filepath: str) -> None:
 def upload_s3(dirpath: str) -> None:
     import boto3, time
 
+    real_filepath = ''
     compressed_filepath = compress_backup(dirpath)
 
-    if c.S3_GPG_ENCRYPT:
-        crypt_filepath = gpg_encrypt_file(compressed_filepath)
+    if c.S3_GPG_ENCRYPT and not c.NOGPG:
+        real_filepath = gpg_encrypt_file(compressed_filepath)
 
-    real_filepath = compressed_filepath if not c.S3_GPG_ENCRYPT else crypt_filepath
+    real_filepath = compressed_filepath if not real_filepath else real_filepath
     datepart = time.strftime("%Y%m%d%H%M%S")
     remote_filename = os.path.split(real_filepath)[1] + '.' + datepart
 
@@ -315,24 +337,12 @@ def main() -> None:
         backup_dirs = [i for i in os.listdir(c.BACKUPS_DIR)
                        if i.startswith(c.BACKUP_BASENAME) and
                            os.path.isdir(os.path.join(c.BACKUPS_DIR, i))]
-        if backup_dirs:
+        if backup_dirs and not c.NOROTATE:
             rotate_backups(backup_dirs)
 
-        # Now do the real backup with rsync
         zerodir = os.path.join(c.BACKUPS_DIR, '{}.0'.format(c.BACKUP_BASENAME))
-
-        excludeparams = ['--exclude={}/*'.format(i) for i in c.EXCLUDE]
-        rsynccmd = ['/usr/bin/rsync', '-azAXSH', '--delete', *excludeparams, c.ORIGIN, zerodir]
-        message('Running rsync with:\n{}'.format(' '.join(rsynccmd)))
-
-        if not c.DRY_RUN:
-            # Minifunction so I can time it
-            @timeit(text='Rsync to the most recent directory')
-            def callrsync():
-                subprocess.check_call(rsynccmd)
-
-            callrsync()
-            message('Rsync completed successfully')
+        if not c.DRY_RUN and not c.NORSYNC:
+            rsync_first(zerodir)
 
         if c.S3_UPLOAD_ENABLED:
             upload_s3(zerodir)
