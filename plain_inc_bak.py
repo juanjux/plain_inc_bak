@@ -225,8 +225,8 @@ def compress_backup(dirpath: str) -> str:
 def gpg_encrypt_file(filepath: str) -> None:
     gpgpath = filepath + '.gpg'
     if os.path.exists(gpgpath):
-        message('Warning: deleting previously existing GPG file: {}'.format(filepath))
-        os.unlink(filepath)
+        message('Warning: deleting previously existing GPG file: {}'.format(gpgpath))
+        os.unlink(gpgpath)
 
     cmd = 'gpg --batch --symmetric --cipher-algo AES256 --passphrase-fd 0 {}'.format(filepath)
     message('Encrypting backup with command: {}'.format(cmd))
