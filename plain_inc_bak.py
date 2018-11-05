@@ -3,9 +3,13 @@ __desc__ = "Incremental backup utility with optional upload to Amazon S3"
 __autor__ = "Juanjo Alvarez <juanjo@juanjoalvarez.net>"
 __license__ = "MIT"
 
-import os, shutil, sys, subprocess, shlex
+import os
+import shlex
+import shutil
+import subprocess
+import sys
 from traceback import format_exc
-from typing import List, Any, Optional, Union
+from typing import List, Any, Optional
 
 from functools import wraps
 from time import time
@@ -19,7 +23,7 @@ TODO:
     - Some examples of usage and integration on the README.md
 """
 
-EMAIL_TEXTS = [] # type: List[str]
+EMAIL_TEXTS: List[str] = []
 
 
 def config_error() -> None:
@@ -32,19 +36,6 @@ def config_error() -> None:
     print("config.example.py file to config.py in one of these directories ")
     print("and configure it")
     sys.exit(1)
-
-
-config_file_path = find_config()
-if config_file_path:
-    import importlib.util as imputil
-    spec = imputil.spec_from_file_location("c", config_file_path)
-    if spec is None or spec.loader is None:
-        config_error()
-    else:
-        c = imputil.module_from_spec(spec)
-        spec.loader.exec_module(c)
-else:
-    config_error()
 
 
 def message(text: str, email: bool = True) -> None:
@@ -93,6 +84,19 @@ def find_config() -> Optional[str]:
         if op.exists(d):
             return d
     return None
+
+
+config_file_path = find_config()
+if config_file_path:
+    import importlib.util as imputil
+    spec = imputil.spec_from_file_location("c", config_file_path)
+    if spec is None or spec.loader is None:
+        config_error()
+    else:
+        c = imputil.module_from_spec(spec)
+        spec.loader.exec_module(c)
+else:
+    config_error()
 
 
 def parse_arguments() -> Any:
@@ -204,7 +208,8 @@ def parse_arguments() -> Any:
 def rsync_first(zerodir):
     # Now do the real backup with rsync
     excludeparams = ['--exclude={}/*'.format(i) for i in c.EXCLUDE]
-    rsynccmd = ['/usr/bin/rsync', '-azAXSH', '--delete', *excludeparams, c.ORIGIN, zerodir]
+    rsynccmd = ['/usr/bin/rsync', '-azAXSH', '--delete',
+                *excludeparams, c.ORIGIN, zerodir]
     message('Running rsync with:\n{}'.format(' '.join(rsynccmd)))
 
     subprocess.check_call(rsynccmd)
@@ -216,8 +221,9 @@ def compress_backup(dirpath: str) -> str:
     outpath = dirpath + '.tar.gz'
     message('Compressing directory {} to {}'.format(dirpath, outpath))
 
-    # Remove the leading '/'; we'll instruct tar to change to the root directory
-    # with the -C / option thus avoiding the "removing leading /" message
+    # Remove the leading '/'; we'll instruct tar to change to the
+    # root directory # with the -C / option thus avoiding the
+    # "removing leading /" message
     if dirpath.startswith('/'):
         dirpath = dirpath[1:]
 
@@ -232,29 +238,38 @@ def compress_backup(dirpath: str) -> str:
 
     return outpath
 
+
 @timeit(text='GPG encrypting the backup for upload')
 def gpg_encrypt_file(filepath: str) -> str:
     gpgpath = filepath + '.gpg'
+
     if os.path.exists(gpgpath):
-        message('Warning: deleting previously existing GPG file: {}'.format(gpgpath))
+        message('Warning: deleting previously existing GPG file: {}'
+                .format(gpgpath))
         os.unlink(gpgpath)
 
-    cmd = 'gpg --batch --symmetric --cipher-algo AES256 --passphrase-fd 0 {}'.format(filepath)
+    cmd = 'gpg --batch --symmetric --cipher-algo AES256 --passphrase-fd 0 {}'\
+        .format(filepath)
+
     message('Encrypting backup with command: {}'.format(cmd))
+
     if not c.DRY_RUN:
         p = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE,
                 stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         (stdout, stderr) = p.communicate(c.S3_GPG_PASSPHRASE.encode())
 
         if p.returncode != 0:
-            raise Exception('Could not encrypt file: {}'.format(stdout + stderr))
+            raise Exception('Could not encrypt file: {}'
+                            .format(stdout + stderr))
 
     message('File encrypted successfully')
     return gpgpath
 
+
 @timeit(text='Uploading to S3')
 def upload_s3(dirpath: str) -> None:
-    import boto3, time
+    import boto3
+    import time
 
     real_filepath = ''
     compressed_filepath = compress_backup(dirpath)
@@ -285,8 +300,9 @@ def upload_s3(dirpath: str) -> None:
 
 
 def send_mail(subject: str, content: str) -> None:
-    # The machine wont have a real smtp server, only a MDA, and the script wont have access to
-    # external SMTP servers, so a sendmail-style binary will be used for delivery
+    # The machine wont have a real smtp server, only a MDA, and the script wont have
+    # access to external SMTP servers, so a sendmail-style binary will be used for
+    # delivery
 
     from textwrap import dedent
 
@@ -363,11 +379,11 @@ def main() -> int:
         message(format_exc())
 
         if hasattr(e, 'output'):
-            message(e.output) # type: ignore
+            message(e.output)  # type: ignore
     else:
         backup_completed = True
 
-    if backup_completed :
+    if backup_completed:
         email_subject = '[BACKUP SUCESS] Backup completed'
     else:
         email_subject = '[BACKUP FAILED] Backup problems!'
