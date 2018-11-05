@@ -5,12 +5,7 @@ __license__ = "MIT"
 
 import os, shutil, sys, subprocess, shlex
 from traceback import format_exc
-try:
-    from typing import List, Any, Optional
-except ImportError:
-    List     = list
-    Any      = object
-    Optional = object
+from typing import List, Any, Optional, Union
 
 from functools import wraps
 from time import time
@@ -25,6 +20,32 @@ TODO:
 """
 
 EMAIL_TEXTS = [] # type: List[str]
+
+
+def config_error() -> None:
+    print("No config.py file found in the script path or:")
+    print("\t~/.config/plain_inc_bak/config.py")
+    print("\t~/.plain_inc_bak_config.py")
+    print("\t/etc/plain_inc_bak/config.py")
+    print()
+    print("If it's the first time running the script you should copy the ")
+    print("config.example.py file to config.py in one of these directories ")
+    print("and configure it")
+    sys.exit(1)
+
+
+config_file_path = find_config()
+if config_file_path:
+    import importlib.util as imputil
+    spec = imputil.spec_from_file_location("c", config_file_path)
+    if spec is None or spec.loader is None:
+        config_error()
+    else:
+        c = imputil.module_from_spec(spec)
+        spec.loader.exec_module(c)
+else:
+    config_error()
+
 
 def message(text: str, email: bool = True) -> None:
     global EMAIL_TEXTS
@@ -58,7 +79,7 @@ def find_config() -> Optional[str]:
     1. (this file dir)
     2. ~/.config/plain_inc_bak/config.py
     3. ~/.plain_inc_bak_config.py
-    3. /etc/plain_inc_bak/config.pykwargs)
+    3. /etc/plain_inc_bak/config.py
     Config files are *not* flattened, only one will be parsed
     """
     op = os.path
@@ -72,16 +93,6 @@ def find_config() -> Optional[str]:
         if op.exists(d):
             return d
     return None
-
-
-config_file_path = find_config()
-if config_file_path:
-    import importlib.util as imputil
-    spec = imputil.spec_from_file_location("c", config_file_path)
-    c = imputil.module_from_spec(spec)
-    spec.loader.exec_module(c)
-else:
-    class c: pass
 
 
 def parse_arguments() -> Any:
@@ -222,7 +233,7 @@ def compress_backup(dirpath: str) -> str:
     return outpath
 
 @timeit(text='GPG encrypting the backup for upload')
-def gpg_encrypt_file(filepath: str) -> None:
+def gpg_encrypt_file(filepath: str) -> str:
     gpgpath = filepath + '.gpg'
     if os.path.exists(gpgpath):
         message('Warning: deleting previously existing GPG file: {}'.format(gpgpath))
@@ -327,7 +338,7 @@ def rotate_backups(backup_dirs: List[str]) -> None:
                     shutil.move(*dir_params)
 
 
-def main() -> None:
+def main() -> int:
     try:
         parse_arguments()
 

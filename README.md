@@ -1,6 +1,32 @@
 # plain_inc_bak
 
-Simple but fast incremental backup script with optional encrypted upload to Amazon S3. Based on the method explained in [this excellent article by Mike Rubel](http://www.mikerubel.org/computers/rsync_snapshots/).
+Simple but fast incremental backup script with optionally encrypted upload to
+Amazon S3. Based on the method explained in [this excellent article by Mike
+Rubel](http://www.mikerubel.org/computers/rsync_snapshots/).
+
+It will search for a `config.py` file for configuration options in these
+filesystem locations:
+
+1. `(plain_inc_bak.py script path)/config.py`.
+1. `~/.config/plain_inc_bak/config.py`
+2. `~/.plain_inc_bak_config.py`
+3. `/etc/plain_inc_bak/config.py`
+
+Only one config file, the first one found, will be used (i. e. if there is more
+than one their options won't be merged). So to start using it rename the
+`config.example.py` file into a `config.py` and edit its options; the file has 
+comments that explain most of them. If you write your S3 secret token or your 
+GPG password into the file **please change its permissions to 600!**.
+
+Once you've done it, you should test run a backup and a restore with the options
+used. The archive format is tar compressed in gzip format (trough faster
+alternatives like pigz will be used if available).
+
+If everything works well, you could then add an execution of the script to your
+crontab. 
+
+The options can also be changed from the command line with these switches (but
+a `config.py` file in one of the locations above is required):
 
 ```
 $ python3 plain_inc_bak.py --help
